@@ -1,15 +1,57 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
+const cookieParser = require('cookie-parser');
 
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+var admin = require("firebase-admin");
+
+var serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
+//middle-ware
+app.use(cors({
+  origin: [ 'http://localhost:5173'],
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
 
+const verifyToken = (req, res, next) => {
+  const token = req?.cookies?.token;
+  if(!token) {
+    return res.status(401).send({message: "Unauthorized Access!"})
+  }
+  jwt.verify(token, process.env.JWT_ACCESS_SECRET, (err, decode)=> {
+    if(err) {
+      return res.status(401).send({message: "Unauthorized Access!"})
+    }
+    req.decode = decode;
+    next();
+  })
+}
 
+// const verifyFirebaseToken = async(req, res, next) => {
+//   const authHeader = req.headers?.authorization;
+  
+//   if(!authHeader) {
+//     return res.status(401).send({message: "Unauthorized access"})
+//   }
+// const token = authHeader.split(' ')[1];
+//   const userInfo = await admin.auth().verifyIdToken(token);
+//   console.log("inside token", userInfo)
+//   req.tokenEmail = userInfo.email;
+//   next()
+  
+// }
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hwn7uvq.mongodb.net/?appName=Cluster0`;
 
@@ -29,9 +71,25 @@ async function run() {
     const usersCollection = client.db('jobPort').collection('users');
     const applicationCollection = client.db('jobPort').collection('application');
 
+    //jwt api
+    app.post("/jwt", async(req, res)=> {
+      const {email} = req.body;
+      const user = {email};
+      const token = jwt.sign(user, process.env.JWT_ACCESS_SECRET, {expiresIn: '1d'})
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: false,
+      })
+      res.send({success: true})
+    })
+    
     app.get("/job", async(req,res)=> {
         const email = req.query.email;
         const query = {};
+        // if(req.tokenEmail != email) {
+        //   return res.status(403).send({message: "Forbidden"})
+        // }
         if(email) {
           query.hrEmail = email
         }
@@ -50,8 +108,12 @@ async function run() {
         res.send(result);
     })
 
-    app.get("/application", async(req, res)=> {
+    app.get("/application",verifyToken, async(req, res)=> {
       const email = req.query.email;
+      // console.log("Inside applications api", req.cookies)
+      if(email !== req.decode.email) {
+        return res.status(403).send({message: "Access denied"})
+      }
       const query = {applicant: email}
       const result = await applicationCollection.find(query).toArray();
       for (const application of result) {
