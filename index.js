@@ -8,8 +8,7 @@ const cookieParser = require('cookie-parser');
 
 const port = process.env.PORT || 5000;
 
-import admin from "firebase-admin";
-// var admin = require("firebase-admin");
+const admin = require("firebase-admin");
 
 // var serviceAccount = require("./firebase-admin-key.json");
 
