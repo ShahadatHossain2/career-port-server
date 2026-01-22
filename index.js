@@ -39,19 +39,18 @@ const verifyToken = (req, res, next) => {
   })
 }
 
-// const verifyFirebaseToken = async(req, res, next) => {
-//   const authHeader = req.headers?.authorization;
+const verifyFirebaseToken = async(req, res, next) => {
+  const authHeader = req.headers?.authorization;
   
-//   if(!authHeader) {
-//     return res.status(401).send({message: "Unauthorized access"})
-//   }
-// const token = authHeader.split(' ')[1];
-//   const userInfo = await admin.auth().verifyIdToken(token);
-//   console.log("inside token", userInfo)
-//   req.tokenEmail = userInfo.email;
-//   next()
+  if(!authHeader) {
+    return next();
+  }
+const token = authHeader.split(' ')[1];
+  const userInfo = await admin.auth().verifyIdToken(token);
+  req.tokenEmail = userInfo.email;
+  next()
   
-// }
+}
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hwn7uvq.mongodb.net/?appName=Cluster0`;
 
@@ -71,6 +70,7 @@ async function run() {
     const usersCollection = client.db('jobPort').collection('users');
     const applicationCollection = client.db('jobPort').collection('application');
 
+
     //jwt api
     app.post("/jwt", async(req, res)=> {
       const {email} = req.body;
@@ -83,14 +83,27 @@ async function run() {
       })
       res.send({success: true})
     })
+
+    app.get("/job/application", async(req, res)=> {
+      const email = req.query.email;
+      const query = {hrEmail: email};
+      const jobs = await jobPortalCollection.find(query).toArray();
+      for (const job of jobs) {
+        const query = {jobId: job._id.toString()}
+        const applicationCount = await applicationCollection.countDocuments(query);
+        job.application_count = applicationCount;
+      }
+      res.send(jobs)
+    })
     
-    app.get("/job", async(req,res)=> {
+    app.get("/job", verifyFirebaseToken, async(req,res)=> {
         const email = req.query.email;
         const query = {};
-        // if(req.tokenEmail != email) {
-        //   return res.status(403).send({message: "Forbidden"})
-        // }
+        
         if(email) {
+          if(req.tokenEmail != email) {
+          return res.status(403).send({message: "Forbidden"})
+        }
           query.hrEmail = email
         }
         const result = await jobPortalCollection.find(query).toArray();
